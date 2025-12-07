@@ -13,6 +13,7 @@ const inventoryRoutes = require('./routes/inventory.routes');
 const saleRoutes = require('./routes/sale.routes');
 const userRoutes = require('./routes/user.routes');
 const welcomeRoutes = require('./routes/welcome.routes');
+const dashboardRoutes = require('./routes/dashboard.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -36,6 +37,7 @@ app.use('/api/inventory', inventoryRoutes);
 app.use('/api/sales', saleRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/welcome', welcomeRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
