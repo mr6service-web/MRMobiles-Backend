@@ -1,0 +1,61 @@
+name: Deploy Backend to EC2
+
+on:
+  push:
+    branches:
+      - main  # Triggers on push to main branch
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Deploy to EC2 via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "."
+          target: "/tmp/backend-deploy"
+          rm: true
+      
+      - name: Setup and restart application on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Navigate to application directory
+            cd /var/www/mrmobiles-backend
+            
+            # Backup current deployment
+            sudo cp -r /var/www/mrmobiles-backend /var/www/mrmobiles-backend-backup || true
+            
+            # Copy new files
+            sudo cp -r /tmp/backend-deploy/* /var/www/mrmobiles-backend/
+            
+            # Set proper ownership
+            sudo chown -R ec2-user:ec2-user /var/www/mrmobiles-backend
+            
+            # Install dependencies
+            cd /var/www/mrmobiles-backend
+            npm install --production
+            
+            # Restart application with PM2
+            pm2 restart mrmobiles-backend || pm2 start ecosystem.config.js
+            
+            # Clean up temp files
+            rm -rf /tmp/backend-deploy
+            
+            echo "✅ Deployment completed successfully!"
+      
+      - name: Deployment summary
+        run: |
+          echo "✅ Backend deployed to EC2!"
+          echo "🌐 Server: ${{ secrets.EC2_HOST }}"
