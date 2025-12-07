@@ -32,19 +32,19 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             # Navigate to application directory
-            cd /var/www/mrmobiles-backend
+            cd /var/www/MRMobiles-Backend
             
             # Backup current deployment
-            sudo cp -r /var/www/mrmobiles-backend /var/www/mrmobiles-backend-backup || true
+            sudo cp -r /var/www/MRMobiles-Backend /var/www/MRMobiles-Backend-backup || true
             
             # Copy new files
-            sudo cp -r /tmp/backend-deploy/* /var/www/mrmobiles-backend/
+            sudo cp -r /tmp/backend-deploy/* /var/www/MRMobiles-Backend/
             
             # Set proper ownership
-            sudo chown -R ec2-user:ec2-user /var/www/mrmobiles-backend
+            sudo chown -R ec2-user:ec2-user /var/www/MRMobiles-Backend
             
             # Install dependencies
-            cd /var/www/mrmobiles-backend
+            cd /var/www/MRMobiles-Backend
             npm install --production
             
             # Restart application with PM2
