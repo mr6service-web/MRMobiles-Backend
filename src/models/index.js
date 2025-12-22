@@ -5,6 +5,10 @@ const Item = require('./Item');
 const Inventory = require('./Inventory');
 const Sale = require('./Sale');
 const SaleItem = require('./SaleItem');
+const ServiceInward = require('./ServiceInward');
+const ServiceInvoice = require('./ServiceInvoice');
+const ServiceReturn = require('./ServiceReturn');
+const ServiceItem = require('./ServiceItem');
 
 // Setup associations
 Item.belongsTo(ItemType, {
@@ -58,6 +62,60 @@ SaleItem.belongsTo(Inventory, {
     as: 'inventory'
 });
 
+// Service Associations
+ServiceInward.belongsTo(User, {
+    foreignKey: 'receivedBy',
+    as: 'receiver'
+});
+
+User.hasMany(ServiceInward, {
+    foreignKey: 'receivedBy',
+    as: 'serviceInwards'
+});
+
+// Service Inward -> Invoice
+ServiceInward.hasOne(ServiceInvoice, {
+    foreignKey: 'inwardId',
+    as: 'invoice'
+});
+
+ServiceInvoice.belongsTo(ServiceInward, {
+    foreignKey: 'inwardId',
+    as: 'inward'
+});
+
+// Service Inward -> Return
+ServiceInward.hasOne(ServiceReturn, {
+    foreignKey: 'inwardId',
+    as: 'return'
+});
+
+ServiceReturn.belongsTo(ServiceInward, {
+    foreignKey: 'inwardId',
+    as: 'inward'
+});
+
+// Service Invoice -> Items
+ServiceInvoice.hasMany(ServiceItem, {
+    foreignKey: 'invoiceId',
+    as: 'items'
+});
+
+ServiceItem.belongsTo(ServiceInvoice, {
+    foreignKey: 'invoiceId',
+    as: 'invoice'
+});
+
+ServiceItem.belongsTo(Item, {
+    foreignKey: 'itemId',
+    as: 'item'
+});
+
+ServiceItem.belongsTo(Inventory, {
+    foreignKey: 'inventoryId',
+    as: 'inventory'
+});
+
 // Initialize all models
 const models = {
     User,
@@ -65,7 +123,11 @@ const models = {
     Item,
     Inventory,
     Sale,
-    SaleItem
+    SaleItem,
+    ServiceInward,
+    ServiceInvoice,
+    ServiceReturn,
+    ServiceItem
 };
 
 module.exports = {

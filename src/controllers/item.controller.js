@@ -1,4 +1,4 @@
-const { Item, ItemType } = require('../models');
+const { Item, ItemType, sequelize } = require('../models');
 const { Op } = require('sequelize');
 
 exports.getAll = async (req, res) => {
@@ -16,6 +16,18 @@ exports.getAll = async (req, res) => {
 
         const { count, rows } = await Item.findAndCountAll({
             where: whereClause,
+            attributes: {
+                include: [
+                    [
+                        sequelize.literal(`(
+                            SELECT COALESCE(SUM(quantity), 0)
+                            FROM inventory
+                            WHERE inventory.item_id = "Item".id
+                        )`),
+                        'totalStock'
+                    ]
+                ]
+            },
             include: [{
                 model: ItemType,
                 as: 'type',
