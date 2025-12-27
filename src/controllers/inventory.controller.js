@@ -67,7 +67,7 @@ exports.getById = async (req, res) => {
 
 exports.create = async (req, res) => {
     try {
-        const { itemId, quantity, inwardPrice, sellingPrice } = req.body;
+        const { itemId, quantity, inwardPrice, sellingPrice, supplierName, purchaseNo } = req.body;
 
         if (!itemId || quantity === undefined || !inwardPrice || !sellingPrice) {
             return res.status(400).json({ message: 'Missing required fields' });
@@ -83,7 +83,9 @@ exports.create = async (req, res) => {
             itemId,
             quantity,
             inwardPrice,
-            sellingPrice
+            sellingPrice,
+            supplierName,
+            purchaseNo
         }, { userId: req.userId });
 
         const createdInventory = await Inventory.findByPk(inventory.id, {
@@ -109,7 +111,7 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
     try {
         const { id } = req.params;
-        const { quantity, inwardPrice, sellingPrice } = req.body;
+        const { quantity, inwardPrice, sellingPrice, supplierName, purchaseNo } = req.body;
 
         const inventory = await Inventory.findByPk(id);
 
@@ -120,7 +122,9 @@ exports.update = async (req, res) => {
         await inventory.update({
             quantity: quantity !== undefined ? quantity : inventory.quantity,
             inwardPrice: inwardPrice || inventory.inwardPrice,
-            sellingPrice: sellingPrice || inventory.sellingPrice
+            sellingPrice: sellingPrice || inventory.sellingPrice,
+            supplierName: supplierName !== undefined ? supplierName : inventory.supplierName,
+            purchaseNo: purchaseNo !== undefined ? purchaseNo : inventory.purchaseNo
         }, { userId: req.userId });
 
         const updatedInventory = await Inventory.findByPk(id, {

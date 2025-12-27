@@ -16,6 +16,15 @@ const Inventory = sequelize.define('Inventory', {
         },
         field: 'item_id'
     },
+    purchaseId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: 'purchases',
+            key: 'id'
+        },
+        field: 'purchase_id'
+    },
     batch: {
         type: DataTypes.INTEGER,
         allowNull: false, // Enforce NOT NULL at database level
@@ -44,6 +53,16 @@ const Inventory = sequelize.define('Inventory', {
         validate: {
             min: 0
         }
+    },
+    supplierName: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        field: 'supplier_name'
+    },
+    purchaseNo: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        field: 'purchase_no'
     },
     createdBy: {
         type: DataTypes.INTEGER,

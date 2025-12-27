@@ -3,6 +3,7 @@ const User = require('./User');
 const ItemType = require('./ItemType');
 const Item = require('./Item');
 const Inventory = require('./Inventory');
+const Purchase = require('./Purchase');
 const Sale = require('./Sale');
 const SaleItem = require('./SaleItem');
 const ServiceInward = require('./ServiceInward');
@@ -29,6 +30,27 @@ Inventory.belongsTo(Item, {
 Item.hasMany(Inventory, {
     foreignKey: 'itemId',
     as: 'inventoryBatches'
+});
+
+// Purchase Associations
+Purchase.belongsTo(User, {
+    foreignKey: 'handledByUserId',
+    as: 'handler'
+});
+
+User.hasMany(Purchase, {
+    foreignKey: 'handledByUserId',
+    as: 'purchaseEntries'
+});
+
+Purchase.hasMany(Inventory, {
+    foreignKey: 'purchaseId',
+    as: 'items'
+});
+
+Inventory.belongsTo(Purchase, {
+    foreignKey: 'purchaseId',
+    as: 'purchase'
 });
 
 // Sales Associations
@@ -122,6 +144,7 @@ const models = {
     ItemType,
     Item,
     Inventory,
+    Purchase,
     Sale,
     SaleItem,
     ServiceInward,
