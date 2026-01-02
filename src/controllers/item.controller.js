@@ -163,6 +163,11 @@ exports.delete = async (req, res) => {
         res.status(200).json({ message: 'Item deleted successfully' });
     } catch (error) {
         console.error(error);
+        if (error.name === 'SequelizeForeignKeyConstraintError') {
+            return res.status(400).json({
+                message: 'Cannot delete item as it has associated records (inventory, sales, or service)'
+            });
+        }
         res.status(500).json({ message: 'Server error' });
     }
 };
