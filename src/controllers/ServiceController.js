@@ -1,4 +1,5 @@
 const { ServiceInward, ServiceInvoice, ServiceReturn, ServiceItem, User, Inventory, Item, sequelize } = require('../models');
+const { Op } = require('sequelize');
 
 class ServiceController {
     static async createInward(req, res) {
@@ -11,7 +12,8 @@ class ServiceController {
 
             // Generate Inward Number
             const count = await ServiceInward.count();
-            const inwardNo = `MR/INW/${(count + 1).toString().padStart(3, '0')}`;
+            const nextId = count + 1;
+            const inwardNo = nextId.toString().padStart(4, '0');
 
             const service = await ServiceInward.create({
                 inwardNo,
@@ -30,6 +32,75 @@ class ServiceController {
         } catch (error) {
             console.error('Error creating inward:', error);
             res.status(500).json({ message: 'Error creating inward entry', error: error.message });
+        }
+    }
+
+    static async getNextInwardNo(req, res) {
+        try {
+            const count = await ServiceInward.count();
+            const nextNo = (count + 1).toString().padStart(4, '0');
+            res.json({ nextNo });
+        } catch (error) {
+            res.status(500).json({ message: 'Error generating inward number', error: error.message });
+        }
+    }
+
+    static async searchInward(req, res) {
+        try {
+            const { inwardNo } = req.query;
+            console.log('Searching Inward No:', inwardNo);
+
+            if (!inwardNo) {
+                return res.status(400).json({ message: 'Inward number is required' });
+            }
+
+            // Construct Variations
+            const variations = [inwardNo];
+            const cleanNo = parseInt(inwardNo);
+
+            if (!isNaN(cleanNo)) {
+                variations.push(cleanNo.toString().padStart(4, '0'));
+                variations.push(`MR/INW/${cleanNo.toString().padStart(3, '0')}`);
+                variations.push(`MR/INW/${cleanNo.toString().padStart(4, '0')}`);
+            }
+
+            console.log('Search Variations:', variations);
+
+            const service = await ServiceInward.findOne({
+                where: {
+                    inwardNo: {
+                        [Op.or]: variations
+                    }
+                },
+                include: [
+                    { model: User, as: 'receiver', attributes: ['username'] },
+                    {
+                        model: ServiceInvoice,
+                        as: 'invoice',
+                        include: [
+                            {
+                                model: ServiceItem,
+                                as: 'items',
+                                include: [
+                                    { model: Item, as: 'item' },
+                                    { model: Inventory, as: 'inventory' }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            });
+
+            console.log('Search Result:', service ? 'Found' : 'Not Found');
+
+            if (!service) {
+                return res.status(404).json({ message: 'Service record not found' });
+            }
+
+            res.json(service);
+        } catch (error) {
+            console.error('Error searching inward:', error);
+            res.status(500).json({ message: 'Error searching service record', error: error.message });
         }
     }
 
@@ -56,14 +127,67 @@ class ServiceController {
 
     static async getAllServices(req, res) {
         try {
-            const services = await ServiceInward.findAll({
+            const { status, fromDate, toDate, receivedBy, page = 1, limit = 20 } = req.query;
+            const offset = (page - 1) * limit;
+
+            const whereClause = {};
+            if (status && status !== 'ALL') {
+                if (status === 'SERVICED') {
+                    whereClause.status = { [Op.in]: ['REPAIRED', 'RETURNED'] };
+                } else {
+                    whereClause.status = status;
+                }
+            }
+
+            if (fromDate && toDate) {
+                whereClause.inwardDate = {
+                    [Op.between]: [fromDate + ' 00:00:00', toDate + ' 23:59:59']
+                };
+            } else if (fromDate) {
+                whereClause.inwardDate = { [Op.gte]: fromDate + ' 00:00:00' };
+            } else if (toDate) {
+                whereClause.inwardDate = { [Op.lte]: toDate + ' 23:59:59' };
+            }
+
+            if (receivedBy && receivedBy !== 'null' && receivedBy !== 'undefined') {
+                whereClause.receivedBy = receivedBy;
+            }
+
+            const { count, rows } = await ServiceInward.findAndCountAll({
+                where: whereClause,
                 include: [
-                    { model: User, as: 'receiver', attributes: ['username'] }
+                    { model: User, as: 'receiver', attributes: ['username'] },
+                    { model: ServiceInvoice, as: 'invoice', attributes: ['finalAmount', 'invoiceNo'] }
                 ],
-                order: [['created_at', 'DESC']]
+                limit: parseInt(limit),
+                offset: parseInt(offset),
+                order: [['inwardDate', 'DESC'], ['id', 'DESC']]
             });
-            res.json(services);
+
+            // Calculate totals for the filtered set
+            const totalEstimate = await ServiceInward.sum('estimateAmount', { where: whereClause }) || 0;
+
+            // To get total invoiced amount, we need to sum finalAmounts from associated invoices
+            const inwardIds = await ServiceInward.findAll({
+                where: whereClause,
+                attributes: ['id'],
+                raw: true
+            }).then(items => items.map(i => i.id));
+
+            const totalInvoiced = await ServiceInvoice.sum('finalAmount', {
+                where: { inwardId: { [Op.in]: inwardIds.length > 0 ? inwardIds : [0] } }
+            }) || 0;
+
+            res.json({
+                services: rows,
+                total: count,
+                totalEstimate: parseFloat(totalEstimate),
+                totalInvoiced: parseFloat(totalInvoiced),
+                page: parseInt(page),
+                totalPages: Math.ceil(count / limit)
+            });
         } catch (error) {
+            console.error('Error fetching services:', error);
             res.status(500).json({ message: 'Error fetching services', error: error.message });
         }
     }
@@ -190,6 +314,27 @@ class ServiceController {
             await t.rollback();
             console.error('Error creating service return:', error);
             res.status(500).json({ message: error.message });
+        }
+    }
+
+    static async deleteInward(req, res) {
+        try {
+            const { id } = req.params;
+            const service = await ServiceInward.findByPk(id);
+
+            if (!service) {
+                return res.status(404).json({ message: 'Service record not found' });
+            }
+
+            if (service.status !== 'INWARD') {
+                return res.status(400).json({ message: 'Cannot delete inward once it has been processed' });
+            }
+
+            await service.destroy();
+            res.json({ message: 'Inward entry deleted successfully' });
+        } catch (error) {
+            console.error('Error deleting inward:', error);
+            res.status(500).json({ message: 'Error deleting inward entry', error: error.message });
         }
     }
 }

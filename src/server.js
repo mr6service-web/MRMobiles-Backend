@@ -11,10 +11,12 @@ const itemRoutes = require('./routes/item.routes');
 const itemTypeRoutes = require('./routes/itemType.routes');
 const inventoryRoutes = require('./routes/inventory.routes');
 const saleRoutes = require('./routes/sale.routes');
+const saleReturnRoutes = require('./routes/sale-return.routes');
 const purchaseRoutes = require('./routes/purchase.routes');
 const serviceRoutes = require('./routes/serviceRoutes');
 const userRoutes = require('./routes/user.routes');
 const welcomeRoutes = require('./routes/welcome.routes');
+const reportRoutes = require('./routes/report.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -40,9 +42,11 @@ app.use('/api/item-types', itemTypeRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/purchases', purchaseRoutes);
 app.use('/api/sales', saleRoutes);
+app.use('/api/sale-returns', saleReturnRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/welcome', welcomeRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

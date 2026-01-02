@@ -6,9 +6,12 @@ const auth = require('../middleware/auth.middleware');
 router.use(auth);
 
 router.post('/', ServiceController.createInward);
+router.get('/next-number', ServiceController.getNextInwardNo);
+router.get('/search', ServiceController.searchInward);
 router.put('/:id', ServiceController.updateInward);
 router.get('/', ServiceController.getAllServices);
 router.get('/:id', ServiceController.getServiceById);
+router.delete('/:id', ServiceController.deleteInward);
 router.post('/:id/invoice', ServiceController.createInvoice);
 router.post('/:id/return', ServiceController.createReturn);
 

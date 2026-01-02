@@ -1,10 +1,11 @@
-const { Sale, SaleItem, Inventory, Item, sequelize } = require('../models');
+const { Sale, SaleItem, Inventory, Item, SaleReturn, SaleReturnItem, sequelize } = require('../models');
+const { Op } = require('sequelize');
 
 exports.create = async (req, res) => {
     const t = await sequelize.transaction();
 
     try {
-        const { customerName, paymentMode, items } = req.body;
+        const { customerName, paymentMode, items, date } = req.body;
         const userId = req.userId;
 
         if (!items || items.length === 0) {
@@ -19,6 +20,7 @@ exports.create = async (req, res) => {
             customerName,
             paymentMode,
             soldBy: userId,
+            invoiceDate: date || new Date(),
             totalQuantity: 0, // Will update later
             totalAmount: 0    // Will update later
         }, { transaction: t });
@@ -85,19 +87,81 @@ exports.create = async (req, res) => {
 
 exports.getAll = async (req, res) => {
     try {
-        const { page = 1, limit = 10 } = req.query;
+        const { page = 1, limit = 10, fromDate, toDate, sellerId } = req.query;
+        console.log('Sales Query Params:', { fromDate, toDate, sellerId });
         const offset = (page - 1) * limit;
 
+        const where = {};
+        if (fromDate && toDate) {
+            where.invoiceDate = {
+                [Op.between]: [fromDate + ' 00:00:00', toDate + ' 23:59:59']
+            };
+        } else if (fromDate) {
+            where.invoiceDate = { [Op.gte]: fromDate + ' 00:00:00' };
+        } else if (toDate) {
+            where.invoiceDate = { [Op.lte]: toDate + ' 23:59:59' };
+        }
+
+        if (sellerId && sellerId !== 'null' && sellerId !== 'undefined') {
+            where.soldBy = sellerId;
+        }
+
+        console.log('Final Where Clause:', where);
+
         const { count, rows } = await Sale.findAndCountAll({
+            where,
             include: ['seller'],
             limit: parseInt(limit),
             offset: parseInt(offset),
-            order: [['createdAt', 'DESC']]
+            order: [['invoiceDate', 'DESC'], ['id', 'DESC']]
         });
 
+        // Calculate grand total for the current filtered set (not just the page)
+        const grossAmount = await Sale.sum('totalAmount', { where });
+
+        // Calculate total returns for these sales
+        const salesIds = rows.map(s => s.id);
+
+        // Get individual refund amounts for each sale in the current page
+        const refundData = await SaleReturn.findAll({
+            attributes: [
+                'saleId',
+                [sequelize.fn('SUM', sequelize.col('refund_amount')), 'totalRefunded']
+            ],
+            where: {
+                saleId: { [Op.in]: salesIds.length > 0 ? salesIds : [0] }
+            },
+            group: ['saleId'],
+            raw: true
+        });
+
+        const refundMap = {};
+        refundData.forEach(item => {
+            refundMap[item.saleId] = parseFloat(item.totalRefunded || 0);
+        });
+
+        const rowsWithRefunds = rows.map(row => {
+            const plainRow = row.toJSON();
+            plainRow.totalRefunded = refundMap[row.id] || 0;
+            return plainRow;
+        });
+
+        // For the grand total net calculation: sum all returns matching the date filter
+        const returnWhere = {};
+        if (fromDate && toDate) {
+            returnWhere.returnDate = {
+                [Op.between]: [fromDate + ' 00:00:00', toDate + ' 23:59:59']
+            };
+        }
+
+        const totalReturnsTotal = await SaleReturn.sum('refundAmount', { where: returnWhere }) || 0;
+        const netGrandTotal = parseFloat(grossAmount || 0) - parseFloat(totalReturnsTotal);
+
         res.status(200).json({
-            sales: rows,
+            sales: rowsWithRefunds,
             total: count,
+            grandTotal: parseFloat(grossAmount || 0),
+            netGrandTotal: netGrandTotal,
             page: parseInt(page),
             totalPages: Math.ceil(count / limit)
         });
@@ -126,10 +190,33 @@ exports.getById = async (req, res) => {
             return res.status(404).json({ message: 'Sale not found' });
         }
 
-        // Explicitly convert to plain object to ensure nested associations are included
+        // Explicitly convert to plain object
         const saleData = sale.toJSON();
-        console.log('Sending sale data:', JSON.stringify(saleData, null, 2));
-        console.log('Items count:', saleData.items?.length);
+
+        // For each item, calculate how much has been returned
+        for (let item of saleData.items) {
+            item.returnedQuantity = await SaleReturnItem.sum('quantity', {
+                where: { saleItemId: item.id }
+            }) || 0;
+            item.returnedAmount = await SaleReturnItem.sum('amount', {
+                where: { saleItemId: item.id }
+            }) || 0;
+        }
+
+        // Also get total return info for this sale
+        saleData.returns = await SaleReturn.findAll({
+            where: { saleId: id },
+            include: [{
+                model: SaleReturnItem,
+                as: 'items',
+                include: ['item']
+            }],
+            order: [['returnDate', 'DESC']]
+        });
+
+        saleData.totalRefunded = await SaleReturn.sum('refundAmount', {
+            where: { saleId: id }
+        }) || 0;
 
         res.status(200).json(saleData);
     } catch (error) {

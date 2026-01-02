@@ -7,6 +7,7 @@ const verifyToken = require('../middleware/auth.middleware');
 router.use(verifyToken);
 
 router.get('/', controller.getAll);
+router.get('/report', controller.getStockReport);
 router.get('/:id', controller.getById);
 router.post('/', controller.create);
 router.put('/:id', controller.update);

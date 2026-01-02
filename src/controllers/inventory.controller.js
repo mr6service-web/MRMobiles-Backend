@@ -165,3 +165,40 @@ exports.delete = async (req, res) => {
         res.status(500).json({ message: 'Server error' });
     }
 };
+
+exports.getStockReport = async (req, res) => {
+    try {
+        const { typeId } = req.query;
+        let itemWhere = {};
+
+        if (typeId) {
+            itemWhere.itemTypeId = typeId;
+        }
+
+        const inventory = await Inventory.findAll({
+            where: {
+                quantity: { [Op.gt]: 0 } // Only stock > 0
+            },
+            include: [{
+                model: Item,
+                as: 'item',
+                where: itemWhere,
+                include: [{
+                    model: ItemType,
+                    as: 'type',
+                    attributes: ['id', 'name']
+                }]
+            }],
+            order: [
+                // Order by Item Type Name (Nested), then Item Name
+                [{ model: Item, as: 'item' }, { model: ItemType, as: 'type' }, 'name', 'ASC'],
+                [{ model: Item, as: 'item' }, 'name', 'ASC']
+            ]
+        });
+
+        res.status(200).json(inventory);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server error' });
+    }
+};

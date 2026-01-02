@@ -3,15 +3,29 @@ const { Op } = require('sequelize');
 
 exports.getAll = async (req, res) => {
     try {
-        const { page = 1, limit = 10, search = '' } = req.query;
+        const { page = 1, limit = 10, search = '', startDate, endDate } = req.query;
         const offset = (page - 1) * limit;
 
-        const whereClause = search ? {
-            [Op.or]: [
+        const whereClause = {};
+
+        if (search) {
+            whereClause[Op.or] = [
                 { id: search },
                 { supplierName: { [Op.like]: `%${search}%` } }
-            ]
-        } : {};
+            ];
+        }
+
+        if (startDate && endDate) {
+            const start = new Date(startDate);
+            start.setHours(0, 0, 0, 0);
+
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+
+            whereClause.date = {
+                [Op.between]: [start, end]
+            };
+        }
 
         const { count, rows } = await Purchase.findAndCountAll({
             where: whereClause,
