@@ -224,3 +224,48 @@ exports.getById = async (req, res) => {
         res.status(500).json({ message: 'Server error' });
     }
 };
+
+exports.delete = async (req, res) => {
+    const t = await sequelize.transaction();
+    try {
+        const { id } = req.params;
+
+        const sale = await Sale.findByPk(id, {
+            include: [{ model: SaleItem, as: 'items' }],
+            transaction: t
+        });
+
+        if (!sale) {
+            await t.rollback();
+            return res.status(404).json({ message: 'Sale not found' });
+        }
+
+        // Check for associated returns
+        const returns = await SaleReturn.count({ where: { saleId: id }, transaction: t });
+        if (returns > 0) {
+            await t.rollback();
+            return res.status(400).json({ message: 'Cannot delete sale with associated returns. Delete returns first.' });
+        }
+
+        // Revert Inventory
+        for (const item of sale.items) {
+            if (item.inventoryId) {
+                const inventory = await Inventory.findByPk(item.inventoryId, { transaction: t });
+                if (inventory) {
+                    await inventory.increment('quantity', { by: item.quantity, transaction: t });
+                }
+            }
+        }
+
+        // Delete SaleItems and Sale
+        await SaleItem.destroy({ where: { saleId: id }, transaction: t });
+        await sale.destroy({ transaction: t });
+
+        await t.commit();
+        res.status(200).json({ message: 'Sale deleted and inventory reverted successfully' });
+    } catch (error) {
+        await t.rollback();
+        console.error('Error deleting sale:', error);
+        res.status(500).json({ message: 'Error deleting sale', error: error.message });
+    }
+};

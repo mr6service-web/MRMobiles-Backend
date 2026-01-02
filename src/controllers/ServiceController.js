@@ -127,7 +127,7 @@ class ServiceController {
 
     static async getAllServices(req, res) {
         try {
-            const { status, fromDate, toDate, receivedBy, page = 1, limit = 20 } = req.query;
+            const { status, fromDate, toDate, receivedBy, phoneNumber, page = 1, limit = 20 } = req.query;
             const offset = (page - 1) * limit;
 
             const whereClause = {};
@@ -153,11 +153,15 @@ class ServiceController {
                 whereClause.receivedBy = receivedBy;
             }
 
+            if (phoneNumber) {
+                whereClause.phoneNumber = { [Op.like]: `%${phoneNumber}%` };
+            }
+
             const { count, rows } = await ServiceInward.findAndCountAll({
                 where: whereClause,
                 include: [
                     { model: User, as: 'receiver', attributes: ['username'] },
-                    { model: ServiceInvoice, as: 'invoice', attributes: ['finalAmount', 'invoiceNo'] }
+                    { model: ServiceInvoice, as: 'invoice', attributes: ['id', 'finalAmount', 'invoiceNo'] }
                 ],
                 limit: parseInt(limit),
                 offset: parseInt(offset),
@@ -318,23 +322,79 @@ class ServiceController {
     }
 
     static async deleteInward(req, res) {
+        const t = await sequelize.transaction();
         try {
             const { id } = req.params;
-            const service = await ServiceInward.findByPk(id);
+            const service = await ServiceInward.findByPk(id, { transaction: t });
 
             if (!service) {
+                await t.rollback();
                 return res.status(404).json({ message: 'Service record not found' });
             }
 
-            if (service.status !== 'INWARD') {
-                return res.status(400).json({ message: 'Cannot delete inward once it has been processed' });
+            if (service.status === 'REPAIRED') {
+                await t.rollback();
+                return res.status(400).json({ message: 'Cannot delete inward once it has been repaired. Delete the invoice first.' });
             }
 
-            await service.destroy();
+            // If status is RETURNED, delete the associated return record first
+            if (service.status === 'RETURNED') {
+                await ServiceReturn.destroy({
+                    where: { inwardId: id },
+                    transaction: t
+                });
+            }
+
+            await service.destroy({ transaction: t });
+            await t.commit();
             res.json({ message: 'Inward entry deleted successfully' });
         } catch (error) {
+            await t.rollback();
             console.error('Error deleting inward:', error);
             res.status(500).json({ message: 'Error deleting inward entry', error: error.message });
+        }
+    }
+
+    static async deleteInvoice(req, res) {
+        const t = await sequelize.transaction();
+        try {
+            const { id } = req.params;
+
+            const invoice = await ServiceInvoice.findByPk(id, {
+                include: [{ model: ServiceItem, as: 'items' }],
+                transaction: t
+            });
+
+            if (!invoice) {
+                await t.rollback();
+                return res.status(404).json({ message: 'Service invoice not found' });
+            }
+
+            // Revert Inventory for parts used
+            for (const item of invoice.items) {
+                if (item.inventoryId) {
+                    const inventory = await Inventory.findByPk(item.inventoryId, { transaction: t });
+                    if (inventory) {
+                        await inventory.increment('quantity', { by: item.quantity, transaction: t });
+                    }
+                }
+            }
+
+            // Delete Invoice (ServiceItems will be deleted via CASCADE)
+            await invoice.destroy({ transaction: t });
+
+            // Update parent Inward status back to 'INWARD'
+            await ServiceInward.update({ status: 'INWARD' }, {
+                where: { id: invoice.inwardId },
+                transaction: t
+            });
+
+            await t.commit();
+            res.json({ message: 'Service invoice deleted and inventory reverted successfully' });
+        } catch (error) {
+            await t.rollback();
+            console.error('Error deleting service invoice:', error);
+            res.status(500).json({ message: 'Error deleting service invoice', error: error.message });
         }
     }
 }
