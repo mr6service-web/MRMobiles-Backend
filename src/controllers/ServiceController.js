@@ -11,9 +11,17 @@ class ServiceController {
             } = req.body;
 
             // Generate Inward Number
-            const count = await ServiceInward.count();
-            const nextId = count + 1;
-            const inwardNo = nextId.toString().padStart(4, '0');
+            const lastInward = await ServiceInward.findOne({
+                order: [['id', 'DESC']]
+            });
+            let nextNo = 1;
+            if (lastInward && lastInward.inwardNo) {
+                const match = lastInward.inwardNo.match(/\d+/);
+                if (match) {
+                    nextNo = parseInt(match[0], 10) + 1;
+                }
+            }
+            const inwardNo = nextNo.toString().padStart(4, '0');
 
             const service = await ServiceInward.create({
                 inwardNo,
@@ -37,8 +45,17 @@ class ServiceController {
 
     static async getNextInwardNo(req, res) {
         try {
-            const count = await ServiceInward.count();
-            const nextNo = (count + 1).toString().padStart(4, '0');
+            const lastInward = await ServiceInward.findOne({
+                order: [['id', 'DESC']]
+            });
+            let nextNoVal = 1;
+            if (lastInward && lastInward.inwardNo) {
+                const match = lastInward.inwardNo.match(/\d+/);
+                if (match) {
+                    nextNoVal = parseInt(match[0], 10) + 1;
+                }
+            }
+            const nextNo = nextNoVal.toString().padStart(4, '0');
             res.json({ nextNo });
         } catch (error) {
             res.status(500).json({ message: 'Error generating inward number', error: error.message });
@@ -243,8 +260,18 @@ class ServiceController {
             }
 
             // Generate Invoice Number
-            const invoiceCount = await ServiceInvoice.count({ transaction: t });
-            const invoiceNo = `MR/SER/${(invoiceCount + 1).toString().padStart(3, '0')}`;
+            const lastInvoice = await ServiceInvoice.findOne({
+                order: [['id', 'DESC']],
+                transaction: t
+            });
+            let nextInvoiceId = 1;
+            if (lastInvoice && lastInvoice.invoiceNo) {
+                const match = lastInvoice.invoiceNo.match(/\d+/);
+                if (match) {
+                    nextInvoiceId = parseInt(match[0], 10) + 1;
+                }
+            }
+            const invoiceNo = `MR/SER/${nextInvoiceId.toString().padStart(3, '0')}`;
 
             const invoice = await ServiceInvoice.create({
                 inwardId: id,
