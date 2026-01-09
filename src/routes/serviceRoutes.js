@@ -14,6 +14,7 @@ router.get('/', ServiceController.getAllServices);
 router.get('/:id', ServiceController.getServiceById);
 router.delete('/:id', authorize('ADMIN'), ServiceController.deleteInward);
 router.delete('/invoice/:id', authorize('ADMIN'), ServiceController.deleteInvoice);
+router.put('/invoice/:id', ServiceController.updateInvoice);
 router.post('/:id/invoice', ServiceController.createInvoice);
 router.post('/:id/return', ServiceController.createReturn);
 

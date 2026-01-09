@@ -130,10 +130,7 @@ class ServiceController {
                 return res.status(404).json({ message: 'Service record not found' });
             }
 
-            if (service.status !== 'INWARD') {
-                return res.status(400).json({ message: 'Cannot edit inward details once processed' });
-            }
-
+            // Allow editing basic details even after processing
             await service.update(req.body);
             res.json(service);
         } catch (error) {
@@ -311,6 +308,74 @@ class ServiceController {
         } catch (error) {
             await t.rollback();
             console.error('Error creating service invoice:', error);
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    static async updateInvoice(req, res) {
+        const t = await sequelize.transaction();
+        try {
+            const { id } = req.params;
+            const { serviceDetails, totalAmount, discount, finalAmount, items } = req.body;
+
+            const invoice = await ServiceInvoice.findByPk(id, {
+                include: [{ model: ServiceItem, as: 'items' }],
+                transaction: t
+            });
+
+            if (!invoice) {
+                throw new Error('Invoice not found');
+            }
+
+            // 1. Revert Inventory for old items
+            for (const item of invoice.items) {
+                if (item.inventoryId) {
+                    const inventory = await Inventory.findByPk(item.inventoryId, { transaction: t });
+                    if (inventory) {
+                        await inventory.increment('quantity', { by: item.quantity, transaction: t });
+                    }
+                }
+            }
+
+            // 2. Delete old ServiceItems
+            await ServiceItem.destroy({
+                where: { invoiceId: id },
+                transaction: t
+            });
+
+            // 3. Update Invoice basic details
+            await invoice.update({
+                serviceDetails,
+                totalAmount,
+                discount,
+                finalAmount
+            }, { transaction: t });
+
+            // 4. Create new ServiceItems and deduct stock
+            if (items && items.length > 0) {
+                for (const item of items) {
+                    await ServiceItem.create({
+                        ...item,
+                        invoiceId: invoice.id
+                    }, { transaction: t });
+
+                    if (item.inventoryId) {
+                        const inventory = await Inventory.findByPk(item.inventoryId, { transaction: t });
+                        if (inventory) {
+                            if (inventory.quantity < item.quantity) {
+                                throw new Error(`Insufficient stock for item: ${item.description || 'N/A'}`);
+                            }
+                            await inventory.decrement('quantity', { by: item.quantity, transaction: t });
+                        }
+                    }
+                }
+            }
+
+            await t.commit();
+            res.json(invoice);
+        } catch (error) {
+            await t.rollback();
+            console.error('Error updating service invoice:', error);
             res.status(500).json({ message: error.message });
         }
     }
