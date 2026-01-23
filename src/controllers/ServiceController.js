@@ -245,7 +245,8 @@ class ServiceController {
         const t = await sequelize.transaction();
         try {
             const { id } = req.params;
-            const { serviceDetails, totalAmount, discount, finalAmount, items } = req.body;
+            const { serviceDetails, totalAmount, discount, finalAmount, items, invoiceDate,
+                customerName, phoneNumber, brandName, modelNo, problemDetails, estimateAmount, inwardDate } = req.body;
 
             const inward = await ServiceInward.findByPk(id, { transaction: t });
             if (!inward) {
@@ -273,7 +274,7 @@ class ServiceController {
             const invoice = await ServiceInvoice.create({
                 inwardId: id,
                 invoiceNo,
-                invoiceDate: new Date(),
+                invoiceDate: invoiceDate || new Date(),
                 serviceDetails,
                 totalAmount,
                 discount,
@@ -300,8 +301,17 @@ class ServiceController {
                 }
             }
 
-            // Update inward status
-            await inward.update({ status: 'REPAIRED' }, { transaction: t });
+            // Update inward status and other details if provided
+            await inward.update({
+                status: 'REPAIRED',
+                customerName: customerName || inward.customerName,
+                phoneNumber: phoneNumber || inward.phoneNumber,
+                brandName: brandName || inward.brandName,
+                modelNo: modelNo || inward.modelNo,
+                problemDetails: problemDetails || inward.problemDetails,
+                estimateAmount: estimateAmount !== undefined ? estimateAmount : inward.estimateAmount,
+                inwardDate: inwardDate || inward.inwardDate
+            }, { transaction: t });
 
             await t.commit();
             res.status(201).json(invoice);
@@ -316,7 +326,8 @@ class ServiceController {
         const t = await sequelize.transaction();
         try {
             const { id } = req.params;
-            const { serviceDetails, totalAmount, discount, finalAmount, items } = req.body;
+            const { serviceDetails, totalAmount, discount, finalAmount, items, invoiceDate,
+                customerName, phoneNumber, brandName, modelNo, problemDetails, estimateAmount, inwardDate } = req.body;
 
             const invoice = await ServiceInvoice.findByPk(id, {
                 include: [{ model: ServiceItem, as: 'items' }],
@@ -348,7 +359,8 @@ class ServiceController {
                 serviceDetails,
                 totalAmount,
                 discount,
-                finalAmount
+                finalAmount,
+                invoiceDate: invoiceDate || invoice.invoiceDate
             }, { transaction: t });
 
             // 4. Create new ServiceItems and deduct stock
@@ -369,6 +381,20 @@ class ServiceController {
                         }
                     }
                 }
+            }
+
+            // 5. Update associated Inward details if provided
+            const inward = await ServiceInward.findByPk(invoice.inwardId, { transaction: t });
+            if (inward) {
+                await inward.update({
+                    customerName: customerName || inward.customerName,
+                    phoneNumber: phoneNumber || inward.phoneNumber,
+                    brandName: brandName || inward.brandName,
+                    modelNo: modelNo || inward.modelNo,
+                    problemDetails: problemDetails || inward.problemDetails,
+                    estimateAmount: estimateAmount !== undefined ? estimateAmount : inward.estimateAmount,
+                    inwardDate: inwardDate || inward.inwardDate
+                }, { transaction: t });
             }
 
             await t.commit();
