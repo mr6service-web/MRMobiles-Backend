@@ -153,14 +153,28 @@ class ServiceController {
                 }
             }
 
-            if (fromDate && toDate) {
-                whereClause.inwardDate = {
-                    [Op.between]: [fromDate + ' 00:00:00', toDate + ' 23:59:59']
-                };
-            } else if (fromDate) {
-                whereClause.inwardDate = { [Op.gte]: fromDate + ' 00:00:00' };
-            } else if (toDate) {
-                whereClause.inwardDate = { [Op.lte]: toDate + ' 23:59:59' };
+            if (fromDate || toDate) {
+                const dateFilter = {};
+                if (fromDate && toDate) {
+                    dateFilter[Op.between] = [fromDate + ' 00:00:00', toDate + ' 23:59:59'];
+                } else if (fromDate) {
+                    dateFilter[Op.gte] = fromDate + ' 00:00:00';
+                } else if (toDate) {
+                    dateFilter[Op.lte] = toDate + ' 23:59:59';
+                }
+
+                if (status === 'REPAIRED') {
+                    whereClause['$invoice.invoice_date$'] = dateFilter;
+                } else if (status === 'RETURNED') {
+                    whereClause['$return.return_date$'] = dateFilter;
+                } else if (status === 'SERVICED') {
+                    whereClause[Op.or] = [
+                        { '$invoice.invoice_date$': dateFilter },
+                        { '$return.return_date$': dateFilter }
+                    ];
+                } else {
+                    whereClause.inward_date = dateFilter;
+                }
             }
 
             if (receivedBy && receivedBy !== 'null' && receivedBy !== 'undefined') {
@@ -175,20 +189,31 @@ class ServiceController {
                 where: whereClause,
                 include: [
                     { model: User, as: 'receiver', attributes: ['username'] },
-                    { model: ServiceInvoice, as: 'invoice', attributes: ['id', 'finalAmount', 'invoiceNo'] }
+                    { model: ServiceInvoice, as: 'invoice', attributes: ['id', 'finalAmount', 'invoiceNo', 'invoiceDate'] },
+                    { model: ServiceReturn, as: 'return', attributes: ['id', 'returnDate', 'returnReason'] }
                 ],
                 limit: parseInt(limit),
                 offset: parseInt(offset),
-                order: [['inwardDate', 'DESC'], ['id', 'DESC']]
+                order: [['id', 'DESC']]
             });
 
             // Calculate totals for the filtered set
-            const totalEstimate = await ServiceInward.sum('estimateAmount', { where: whereClause }) || 0;
+            const totalEstimate = await ServiceInward.sum('estimateAmount', {
+                where: whereClause,
+                include: [
+                    { model: ServiceInvoice, as: 'invoice', attributes: [] },
+                    { model: ServiceReturn, as: 'return', attributes: [] }
+                ]
+            }) || 0;
 
             // To get total invoiced amount, we need to sum finalAmounts from associated invoices
             const inwardIds = await ServiceInward.findAll({
                 where: whereClause,
                 attributes: ['id'],
+                include: [
+                    { model: ServiceInvoice, as: 'invoice', attributes: [] },
+                    { model: ServiceReturn, as: 'return', attributes: [] }
+                ],
                 raw: true
             }).then(items => items.map(i => i.id));
 
