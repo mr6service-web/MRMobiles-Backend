@@ -269,3 +269,37 @@ exports.delete = async (req, res) => {
         res.status(500).json({ message: 'Error deleting sale', error: error.message });
     }
 };
+exports.getNavigation = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const currentId = parseInt(id);
+
+        const prev = await Sale.findOne({
+            where: { id: { [Op.lt]: currentId } },
+            order: [['id', 'DESC']],
+            attributes: ['id']
+        });
+        const next = await Sale.findOne({
+            where: { id: { [Op.gt]: currentId } },
+            order: [['id', 'ASC']],
+            attributes: ['id']
+        });
+        const first = await Sale.findOne({
+            order: [['id', 'ASC']],
+            attributes: ['id']
+        });
+        const last = await Sale.findOne({
+            order: [['id', 'DESC']],
+            attributes: ['id']
+        });
+
+        res.json({
+            prevId: prev ? prev.id : null,
+            nextId: next ? next.id : null,
+            firstId: first ? first.id : null,
+            lastId: last ? last.id : null
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Error fetching navigation IDs', error: error.message });
+    }
+};

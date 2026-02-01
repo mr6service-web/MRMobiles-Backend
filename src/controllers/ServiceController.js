@@ -540,6 +540,103 @@ class ServiceController {
             res.status(500).json({ message: 'Error deleting service invoice', error: error.message });
         }
     }
+    static async getInvoiceById(req, res) {
+        try {
+            const invoice = await ServiceInvoice.findByPk(req.params.id, {
+                include: [
+                    {
+                        model: ServiceInward,
+                        as: 'inward',
+                        include: [{ model: User, as: 'receiver', attributes: ['username'] }]
+                    },
+                    {
+                        model: ServiceItem,
+                        as: 'items',
+                        include: [
+                            { model: Item, as: 'item' },
+                            { model: Inventory, as: 'inventory' }
+                        ]
+                    }
+                ]
+            });
+            if (!invoice) {
+                return res.status(404).json({ message: 'Invoice not found' });
+            }
+            res.json(invoice);
+        } catch (error) {
+            res.status(500).json({ message: 'Error fetching invoice details', error: error.message });
+        }
+    }
+
+    static async getInwardNavigation(req, res) {
+        try {
+            const { id } = req.params;
+            const currentId = parseInt(id);
+
+            const prev = await ServiceInward.findOne({
+                where: { id: { [Op.lt]: currentId } },
+                order: [['id', 'DESC']],
+                attributes: ['id']
+            });
+            const next = await ServiceInward.findOne({
+                where: { id: { [Op.gt]: currentId } },
+                order: [['id', 'ASC']],
+                attributes: ['id']
+            });
+            const first = await ServiceInward.findOne({
+                order: [['id', 'ASC']],
+                attributes: ['id']
+            });
+            const last = await ServiceInward.findOne({
+                order: [['id', 'DESC']],
+                attributes: ['id']
+            });
+
+            res.json({
+                prevId: prev ? prev.id : null,
+                nextId: next ? next.id : null,
+                firstId: first ? first.id : null,
+                lastId: last ? last.id : null
+            });
+        } catch (error) {
+            res.status(500).json({ message: 'Error fetching navigation IDs', error: error.message });
+        }
+    }
+
+    static async getInvoiceNavigation(req, res) {
+        try {
+            const { id } = req.params;
+            const currentId = parseInt(id);
+
+            const prev = await ServiceInvoice.findOne({
+                where: { id: { [Op.lt]: currentId } },
+                order: [['id', 'DESC']],
+                attributes: ['id']
+            });
+            const next = await ServiceInvoice.findOne({
+                where: { id: { [Op.gt]: currentId } },
+                order: [['id', 'ASC']],
+                attributes: ['id']
+            });
+            const first = await ServiceInvoice.findOne({
+                order: [['id', 'ASC']],
+                attributes: ['id']
+            });
+            const last = await ServiceInvoice.findOne({
+                order: [['id', 'DESC']],
+                attributes: ['id']
+            });
+
+            res.json({
+                prevId: prev ? prev.id : null,
+                nextId: next ? next.id : null,
+                firstId: first ? first.id : null,
+                lastId: last ? last.id : null
+            });
+        } catch (error) {
+            res.status(500).json({ message: 'Error fetching navigation IDs', error: error.message });
+        }
+    }
 }
 
 module.exports = ServiceController;

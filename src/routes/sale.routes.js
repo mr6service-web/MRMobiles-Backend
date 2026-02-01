@@ -9,6 +9,7 @@ router.use(verifyToken);
 
 router.post('/', controller.create);
 router.get('/', controller.getAll);
+router.get('/navigation/:id', controller.getNavigation);
 router.get('/:id', controller.getById);
 router.delete('/:id', authorize('ADMIN'), controller.delete);
 
